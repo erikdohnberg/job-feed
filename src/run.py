@@ -24,6 +24,9 @@ FILTERS_PATH = ROOT / "config" / "filters.json"
 SEEN_PATH = ROOT / "state" / "seen.json"
 OUTPUT_PATH = ROOT / "candidates.json"
 
+# candidates.json holds every role first seen within this many days, not just the newest batch.
+WINDOW_DAYS = 7
+
 # Urls first seen longer ago than this are dropped from state/seen.json to keep it small.
 SEEN_TTL_DAYS = 60
 
@@ -72,22 +75,45 @@ def load_seen():
     return dict(urls)
 
 
+def _parse_stamp(value):
+    """Parse a stored timestamp into an aware datetime, or None if unreadable."""
+    try:
+        stamped = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return stamped if stamped.tzinfo else stamped.replace(tzinfo=timezone.utc)
+
+
 def prune_seen(seen, now=None):
     """Drop urls first seen more than SEEN_TTL_DAYS ago."""
     cutoff = (now or datetime.now(timezone.utc)) - timedelta(days=SEEN_TTL_DAYS)
     kept = {}
     for url, first_seen in seen.items():
-        try:
-            stamped = datetime.fromisoformat(str(first_seen).replace("Z", "+00:00"))
-        except ValueError:
+        stamped = _parse_stamp(first_seen)
+        if stamped is None:
             # Unreadable date: keep the url so we do not re-emit it, and reset its clock.
             kept[url] = _now()
-            continue
-        if stamped.tzinfo is None:
-            stamped = stamped.replace(tzinfo=timezone.utc)
-        if stamped >= cutoff:
+        elif stamped >= cutoff:
             kept[url] = first_seen
     return kept
+
+
+def roles_in_window(rows, seen, now=None):
+    """Roles first seen within WINDOW_DAYS, newest first.
+
+    Built from the rows fetched this run, so a role that has come down off its board
+    leaves the window even if it was first seen inside it.
+    """
+    cutoff = (now or datetime.now(timezone.utc)) - timedelta(days=WINDOW_DAYS)
+    windowed = []
+    for row in rows:
+        first_seen = seen.get(row.get("url"))
+        stamped = _parse_stamp(first_seen)
+        if stamped is None or stamped < cutoff:
+            continue
+        windowed.append({**row, "first_seen": first_seen})
+    windowed.sort(key=lambda row: _parse_stamp(row["first_seen"]), reverse=True)
+    return windowed
 
 
 def _now():
@@ -104,7 +130,10 @@ def write_candidates(roles):
     if isinstance(existing, dict) and existing.get("roles") == roles:
         log.info("candidates.json unchanged (%d roles), leaving it as is", len(roles))
         return
-    write_json(OUTPUT_PATH, {"generated_at": _now(), "count": len(roles), "roles": roles})
+    write_json(
+        OUTPUT_PATH,
+        {"generated_at": _now(), "window_days": WINDOW_DAYS, "count": len(roles), "roles": roles},
+    )
 
 
 def _role_key(row):
@@ -200,17 +229,22 @@ def main(argv=None):
     new = dedup(collapsed, set(seen))
 
     if args.dry_run:
+        preview = dict(seen)
+        preview.update({row["url"]: _now() for row in new})
         print_report(tokens, rows, passing)
         print(
             f"\n{len(passing)} passed, {len(collapsed)} after collapsing regional copies, "
-            f"{len(new)} would be new. Dry run — nothing written."
+            f"{len(new)} would be new, {len(roles_in_window(collapsed, preview))} in the "
+            f"{WINDOW_DAYS}-day window. Dry run — nothing written."
         )
         return
 
-    write_candidates(new)
-
     stamp = _now()
     seen.update({row["url"]: stamp for row in new})
+
+    window = roles_in_window(collapsed, seen)
+    write_candidates(window)
+
     kept = prune_seen(seen)
     dropped = len(seen) - len(kept)
     if dropped:
@@ -218,11 +252,14 @@ def main(argv=None):
     write_json(SEEN_PATH, {"urls": dict(sorted(kept.items()))})
 
     log.info(
-        "fetched %d, passed filters %d, after collapsing regional copies %d, new %d",
+        "fetched %d, passed filters %d, after collapsing regional copies %d, new %d, "
+        "in the %d-day window %d",
         len(rows),
         len(passing),
         len(collapsed),
         len(new),
+        WINDOW_DAYS,
+        len(window),
     )
     for row in new:
         log.info("  + [%s] %s — %s", row["company"], row["title"], row["location"] or "n/a")

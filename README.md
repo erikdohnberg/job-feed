@@ -15,7 +15,8 @@ Each run does four things:
 
 ```json
 {
-  "generated_at": "2026-07-28T11:00:04Z",
+  "generated_at": "2026-07-28T06:00:04Z",
+  "window_days": 7,
   "count": 2,
   "roles": [
     {
@@ -26,13 +27,24 @@ Each run does four things:
       "remote": true,
       "url": "https://jobs.ashbyhq.com/wealthsimple/...",
       "posted_at": "2026-07-25T14:02:11Z",
+      "first_seen": "2026-07-26T06:00:03Z",
       "description": "…full plain-text description…"
     }
   ]
 }
 ```
 
-`roles` holds only what is **new since the last run** — a quiet day is `count: 0`, not a repeat of yesterday. The file is left untouched when the set has not changed, so `generated_at` marks the last time the feed actually moved.
+`roles` is a **rolling window**: every role first seen in the last `WINDOW_DAYS`
+(7, set in `src/run.py`), newest first, not just the roles found on the latest run. A
+role stays in the feed for a week, so nothing is missed by skipping a morning.
+
+Two things take a role out of the window: its `first_seen` date ageing past 7 days, or
+the posting coming down off its board — a closed role stops being emitted even if it was
+first seen inside the window. `posted_at` is the board's own date; `first_seen` is when
+this service first emitted it, and drives the window.
+
+The file is left untouched when the role set has not changed, so `generated_at` marks
+the last time the feed actually moved.
 
 ## Adding or removing companies
 
