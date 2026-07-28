@@ -196,6 +196,28 @@ def _append_blocks(session, page_id, blocks):
     return True
 
 
+def row_exists(session, url):
+    """True if the Pipeline already has a row for this posting.
+
+    state/seen.json only knows what this service emitted. Erik adds roles by hand and
+    through other skills, so without this check a role already in the Pipeline would get
+    a second row the first time the feed picks it up.
+    """
+    response = _request(
+        session,
+        "POST",
+        f"{API_ROOT}/data_sources/{DATA_SOURCE_ID}/query",
+        json={"filter": {"property": "JD Link", "url": {"equals": url}}, "page_size": 1},
+    )
+    if not _ok(response):
+        _log_failure(response, f"checking the Pipeline for {url}")
+        return False  # can't tell — better a possible duplicate than a dropped role
+    try:
+        return bool(response.json().get("results"))
+    except ValueError:
+        return False
+
+
 def create_page(session, schema, role):
     """Create one Pipeline row. Returns True on success, never raises."""
     blocks = description_blocks(role.get("description") or "")
@@ -248,6 +270,12 @@ def push_roles(roles):
 
     pushed = set()
     for role in roles:
+        if row_exists(session, role["url"]):
+            # Already tracked in the Pipeline. Count it as pushed so it is recorded as
+            # seen and we stop reconsidering it every run.
+            pushed.add(role["url"])
+            log.info("notion: = already in the Pipeline, skipping [%s] %s", role["company"], role["title"])
+            continue
         if create_page(session, schema, role):
             pushed.add(role["url"])
             log.info("notion: + [%s] %s", role["company"], role["title"])

@@ -150,6 +150,10 @@ and into the **page body** as paragraph blocks for reading. Both are chunked to 
 characters, since a single rich text object caps out at 2000. Chunks reassemble to the original exactly, and a
 description longer than 100 blocks is appended in follow-up calls rather than truncated.
 
+Before creating a row the pusher queries the Pipeline for an existing row with the same
+JD Link and skips it if found. `state/seen.json` only knows what this service emitted,
+so without that check a role Erik had already added by hand would get a second row.
+
 Failures never break the run: a non-2xx logs a warning and moves on, and a role that did
 not reach Notion is deliberately **not** recorded in `state/seen.json`, so the next run
 retries it instead of dropping it.
