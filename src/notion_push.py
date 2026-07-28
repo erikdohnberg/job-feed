@@ -29,7 +29,8 @@ REQUEST_TIMEOUT = 30
 DELAY_SECONDS = 0.35  # Notion allows ~3 requests/second averaged over time.
 BLOCK_CHARS = 1900  # Under Notion's 2000-character cap per rich text object.
 MAX_BLOCKS_PER_CALL = 100  # Notion's cap on children per request.
-PROPERTY_CHARS = 2000
+PROPERTY_CHARS = 2000  # Notion's cap per rich text object.
+MAX_RICH_TEXT_ITEMS = 100  # Notion's cap on objects in one rich text property.
 
 
 def _values_for(role):
@@ -38,6 +39,9 @@ def _values_for(role):
         "Role Title": role.get("title") or "(untitled role)",
         "Company": role.get("company") or "",
         "JD Link": role.get("url") or "",
+        # score-jd reads the cached JD off this property rather than re-fetching the
+        # posting, so it has to carry the full text even though the body has it too.
+        "JD Text": role.get("description") or "",
         "Source": "job-feed",
         "Submission Status": "Pending",
         "Stage": "Watching",
@@ -88,7 +92,17 @@ def format_value(value, prop_type, name):
         return {"title": [{"type": "text", "text": {"content": value[:PROPERTY_CHARS]}}]}
     # The API calls it rich_text; some surfaces report the same type as "text".
     if prop_type in ("rich_text", "text"):
-        return {"rich_text": [{"type": "text", "text": {"content": value[:PROPERTY_CHARS]}}]}
+        # A JD runs well past the 2000-character cap on one rich text object, so split
+        # it across several — the property holds up to MAX_RICH_TEXT_ITEMS of them.
+        chunks = chunk_description(value, PROPERTY_CHARS - 100)
+        if len(chunks) > MAX_RICH_TEXT_ITEMS:
+            log.warning(
+                "notion: %r is too long for a property, keeping the first %d chunks",
+                name,
+                MAX_RICH_TEXT_ITEMS,
+            )
+            chunks = chunks[:MAX_RICH_TEXT_ITEMS]
+        return {"rich_text": [{"type": "text", "text": {"content": c}} for c in chunks]}
     if prop_type == "url":
         return {"url": value}
     if prop_type in ("select", "status"):

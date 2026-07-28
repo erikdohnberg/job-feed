@@ -140,11 +140,14 @@ rather than failing the row. The mapping:
 | Source (select) | `job-feed` |
 | Submission Status (select) | `Pending` |
 | Stage (select) | `Watching` |
+| JD Text (text) | full JD, chunked |
 
 Fit Score, Bucket and Network Score are left empty for the scorer to fill.
 
-The JD goes into the **page body** as paragraph blocks chunked to 1900 characters, since a
-Notion property caps out at 2000. Chunks reassemble to the original exactly, and a
+The JD is written **twice, on purpose**: into `JD Text`, because `score-jd` reads its
+cached copy from that property rather than re-fetching a posting that may have vanished,
+and into the **page body** as paragraph blocks for reading. Both are chunked to 1900
+characters, since a single rich text object caps out at 2000. Chunks reassemble to the original exactly, and a
 description longer than 100 blocks is appended in follow-up calls rather than truncated.
 
 Failures never break the run: a non-2xx logs a warning and moves on, and a role that did
