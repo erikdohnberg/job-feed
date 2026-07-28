@@ -54,6 +54,23 @@ def load_seen():
     return set(urls)
 
 
+def _now():
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def write_candidates(roles):
+    """Write candidates.json, leaving the file untouched when the role set is unchanged.
+
+    Rewriting it every run would churn generated_at, so the scheduled Action would
+    produce a commit every weekday even on days when nothing new turns up.
+    """
+    existing = load_json(OUTPUT_PATH, default={})
+    if isinstance(existing, dict) and existing.get("roles") == roles:
+        log.info("candidates.json unchanged (%d roles), leaving it as is", len(roles))
+        return
+    write_json(OUTPUT_PATH, {"generated_at": _now(), "count": len(roles), "roles": roles})
+
+
 def dedup(rows, seen_urls):
     """Drop rows whose url is already in seen_urls, and any repeats within this run."""
     new = []
@@ -78,14 +95,7 @@ def main():
     seen = load_seen()
     new = dedup(passing, seen)
 
-    write_json(
-        OUTPUT_PATH,
-        {
-            "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
-            "count": len(new),
-            "roles": new,
-        },
-    )
+    write_candidates(new)
     write_json(SEEN_PATH, {"urls": sorted(seen | {row["url"] for row in new})})
 
     log.info("fetched %d, passed filters %d, new %d", len(rows), len(passing), len(new))

@@ -2,8 +2,8 @@ name: job-feed
 
 on:
   schedule:
-    # 06:00 UTC daily
-    - cron: "0 6 * * *"
+    # 11:00 UTC, weekday mornings
+    - cron: "0 11 * * 1-5"
   workflow_dispatch:
 
 permissions:
@@ -18,17 +18,22 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
 
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Fetch and filter postings
+      - name: Fetch, filter, and write the feed
         run: python src/run.py
 
-      - name: Commit candidates.json and seen state
+      - name: Commit the feed if it changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add candidates.json state/seen.json
-          git diff --staged --quiet || git commit -m "job-feed: refresh candidates"
+          if git diff --staged --quiet; then
+            echo "No feed changes — nothing to commit."
+            exit 0
+          fi
+          git commit -m "job-feed: refresh candidates ($(date -u +%Y-%m-%d))"
           git push
