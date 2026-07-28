@@ -137,9 +137,11 @@ time.
 
 ## Schedule
 
-`.github/workflows/job-feed.yml` runs at 11:00 UTC Monday–Friday, and on demand via
-**Actions → job-feed → Run workflow**. It commits `candidates.json` and `state/seen.json`
-only when they change.
+`.github/workflows/job-feed.yml` runs daily at 06:00 UTC — 02:00 in Toronto while EDT is
+in effect, 01:00 once EST resumes, since GitHub cron is UTC only and does not follow
+daylight saving. Change the `cron:` line to `0 7 * * *` to hold 02:00 through the winter
+instead. It also runs on demand via **Actions → job-feed → Run workflow**, and commits
+`candidates.json` and `state/seen.json` only when they change.
 
 ## Layout
 
