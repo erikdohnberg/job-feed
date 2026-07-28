@@ -102,7 +102,9 @@ def _iso(value):
 
 
 def _stamp(dt):
-    return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    # Second precision: Ashby returns milliseconds, Greenhouse does not, and the
+    # scorer only ever compares dates.
+    return dt.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def infer_remote(location, title, flag=None, workplace_type=None):
@@ -296,4 +298,4 @@ if __name__ == "__main__":
             preview["description"] = preview["description"][:400] + (
                 " …" if len(preview["description"]) > 400 else ""
             )
-            print(json.dumps(preview, indent=2))
+            print(json.dumps(preview, indent=2, ensure_ascii=False))
