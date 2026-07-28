@@ -1,35 +1,67 @@
 """Filtering rules applied to normalized rows, driven by config/filters.json.
 
-A row is kept when all of these hold:
-  - the title looks like a product management role   (pm_terms)
-  - the title carries a senior-or-above level marker (levels)
-  - the title hits none of the negative_keywords
-  - the location matches something in locations_allow
+A role is kept when all of these hold, case-insensitively:
 
-Not implemented yet — scaffold only.
+  - the title contains a pm_term
+  - the title contains a level term
+  - remote is true, OR location + title contains a locations_allow term
+  - the title contains none of the negative_keywords
+  - the title contains none of HARD_EXCLUDES
+
+Term matching is plain substring for the positive rules (so "sr " and "sr." work as
+written), and word-boundary for the exclusions — otherwise "intern" would throw out
+every "International" role and "apm" would fire inside unrelated words.
 """
+
+import re
+
+# Excluded regardless of what config/filters.json says.
+HARD_EXCLUDES = ("associate", "junior", "intern", "apm")
+
+
+def _contains_any(text, terms):
+    """Case-insensitive substring match against any term."""
+    lowered = (text or "").lower()
+    return any(term.lower() in lowered for term in terms)
+
+
+def _contains_any_word(text, terms):
+    """Case-insensitive whole-word match against any term."""
+    lowered = (text or "").lower()
+    return any(re.search(rf"\b{re.escape(term.lower())}\b", lowered) for term in terms)
 
 
 def is_pm_role(title, filters):
-    raise NotImplementedError
+    return _contains_any(title, filters.get("pm_terms", []))
 
 
 def is_senior_level(title, filters):
-    raise NotImplementedError
+    return _contains_any(title, filters.get("levels", []))
+
+
+def location_allowed(row, filters):
+    if row.get("remote"):
+        return True
+    haystack = f"{row.get('location') or ''} {row.get('title') or ''}"
+    return _contains_any(haystack, filters.get("locations_allow", []))
 
 
 def has_negative_keyword(title, filters):
-    raise NotImplementedError
-
-
-def location_allowed(location, filters):
-    raise NotImplementedError
+    return _contains_any_word(title, filters.get("negative_keywords", [])) or _contains_any_word(
+        title, HARD_EXCLUDES
+    )
 
 
 def keep(row, filters):
     """True if the row survives every rule above."""
-    raise NotImplementedError
+    title = row.get("title") or ""
+    return (
+        is_pm_role(title, filters)
+        and is_senior_level(title, filters)
+        and location_allowed(row, filters)
+        and not has_negative_keyword(title, filters)
+    )
 
 
 def apply_filters(rows, filters):
-    raise NotImplementedError
+    return [row for row in rows if keep(row, filters)]

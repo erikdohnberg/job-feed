@@ -42,7 +42,10 @@ Python 3.12, `requests` only.
 rows whose URL is already in that set, writes the survivors to `candidates.json`, and
 adds them to the set. Both files are committed by the Action, so state carries across runs.
 
-## Status
+## Filtering
 
-Scaffold. `src/` files are stubs — fetchers, filters, and the orchestrator are not
-implemented yet.
+A role reaches `candidates.json` only if its title contains a `pm_terms` entry **and** a
+`levels` entry, it is remote or matches `locations_allow`, and it hits none of the
+`negative_keywords` or the hard exclusions in `src/filter.py` (`associate`, `junior`,
+`intern`, `apm`). Exclusions match on whole words, so "International" is not read as
+"intern".

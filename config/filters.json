@@ -3,56 +3,26 @@
     "product manager",
     "product management",
     "product lead",
-    "group product manager",
-    "director of product",
-    "head of product"
+    "product owner"
   ],
   "levels": [
     "senior",
-    "sr",
     "sr.",
+    "sr ",
     "lead",
     "principal",
     "staff",
-    "group",
-    "gpm",
-    "director",
-    "head of"
+    "group"
   ],
   "negative_keywords": [
-    "intern",
-    "internship",
-    "co-op",
-    "contract",
-    "contractor",
-    "associate product manager",
-    "apm",
-    "junior",
-    "technical program manager",
-    "project manager",
-    "program manager",
-    "product marketing",
-    "product designer",
-    "product owner",
-    "engineering manager"
+    "control brand",
+    "merchandising",
+    "category management"
   ],
   "locations_allow": [
     "remote",
-    "canada",
     "toronto",
     "ontario",
-    "vancouver",
-    "montreal",
-    "ottawa",
-    "united states",
-    "usa",
-    "us",
-    "new york",
-    "san francisco",
-    "seattle",
-    "boston",
-    "austin",
-    "chicago",
-    "los angeles"
+    "canada"
   ]
 }
