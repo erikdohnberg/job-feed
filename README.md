@@ -83,6 +83,42 @@ Python 3.12, `requests` only. HTML stripping uses the standard library.
 
 `python src/fetch_ats.py` hits one board per ATS and prints the first normalized row — handy for checking a newly added token.
 
+## Checking a batch of new tokens
+
+After adding tokens, run a dry run before the next scheduled run. It fetches and filters
+but writes nothing, so a bad slug or an over-loose filter shows up before it reaches
+`candidates.json`:
+
+```bash
+python src/run.py --dry-run
+```
+
+```
+ats         company                   fetched  passed
+-----------------------------------------------------
+greenhouse  overstory                      12       2
+greenhouse  instacart                     124      13
+lever       pockethealth                    0       0   <- nothing fetched
+ashby       wealthsimple                   39       2
+-----------------------------------------------------
+total                                     175      17
+```
+
+`<- nothing fetched` means a dead or misspelled slug. A company whose `passed` count
+looks implausibly high is a sign the filters need tightening.
+
+## Dedup state
+
+`state/seen.json` maps every emitted url to the date it was first seen:
+
+```json
+{ "urls": { "https://jobs.ashbyhq.com/wealthsimple/...": "2026-07-28T11:00:04Z" } }
+```
+
+Entries older than 60 days (`SEEN_TTL_DAYS` in `src/run.py`) are pruned on each run to
+keep the file small. A role still open after 60 days will therefore be emitted a second
+time.
+
 ## Schedule
 
 `.github/workflows/job-feed.yml` runs at 11:00 UTC Monday–Friday, and on demand via

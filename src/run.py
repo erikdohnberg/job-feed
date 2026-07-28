@@ -1,14 +1,16 @@
 """Entry point: fetch -> filter -> dedup -> write candidates.json.
 
 Run with:  python src/run.py
+           python src/run.py --dry-run    # fetch and filter, print counts, write nothing
 
 Reads  config/tokens.json, config/filters.json, state/seen.json
 Writes candidates.json, state/seen.json
 """
 
+import argparse
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import fetch_ats
@@ -21,6 +23,9 @@ TOKENS_PATH = ROOT / "config" / "tokens.json"
 FILTERS_PATH = ROOT / "config" / "filters.json"
 SEEN_PATH = ROOT / "state" / "seen.json"
 OUTPUT_PATH = ROOT / "candidates.json"
+
+# Urls first seen longer ago than this are dropped from state/seen.json to keep it small.
+SEEN_TTL_DAYS = 60
 
 
 def load_json(path, default=None):
@@ -48,10 +53,37 @@ def write_json(path, data):
 
 
 def load_seen():
-    """Return the set of urls already emitted. Missing file means nothing seen yet."""
-    data = load_json(SEEN_PATH, default={"urls": []})
-    urls = data.get("urls", []) if isinstance(data, dict) else data
-    return set(urls)
+    """Return {url: first-seen timestamp} for urls already emitted.
+
+    Missing file means nothing has been seen yet. The original format was a plain
+    list of urls with no dates; those are migrated by stamping them as first seen
+    now, which is the earliest date we can honestly claim.
+    """
+    data = load_json(SEEN_PATH, default={"urls": {}})
+    urls = data.get("urls", {}) if isinstance(data, dict) else data
+    if isinstance(urls, list):
+        log.info("migrating %d seen urls to the dated format", len(urls))
+        stamp = _now()
+        return {url: stamp for url in urls}
+    return dict(urls)
+
+
+def prune_seen(seen, now=None):
+    """Drop urls first seen more than SEEN_TTL_DAYS ago."""
+    cutoff = (now or datetime.now(timezone.utc)) - timedelta(days=SEEN_TTL_DAYS)
+    kept = {}
+    for url, first_seen in seen.items():
+        try:
+            stamped = datetime.fromisoformat(str(first_seen).replace("Z", "+00:00"))
+        except ValueError:
+            # Unreadable date: keep the url so we do not re-emit it, and reset its clock.
+            kept[url] = _now()
+            continue
+        if stamped.tzinfo is None:
+            stamped = stamped.replace(tzinfo=timezone.utc)
+        if stamped >= cutoff:
+            kept[url] = first_seen
+    return kept
 
 
 def _now():
@@ -84,7 +116,42 @@ def dedup(rows, seen_urls):
     return new
 
 
-def main():
+def print_report(tokens, rows, passing):
+    """Per-company fetched/passed counts, for sanity-checking tokens and filters."""
+    fetched_by = {}
+    passed_by = {}
+    for row in rows:
+        fetched_by[(row["ats"], row["company"])] = fetched_by.get((row["ats"], row["company"]), 0) + 1
+    for row in passing:
+        passed_by[(row["ats"], row["company"])] = passed_by.get((row["ats"], row["company"]), 0) + 1
+
+    # Drive off the config so a board that returned nothing still shows up as a zero.
+    boards = [(ats, token) for ats in fetch_ats.FETCHERS for token in tokens.get(ats, [])]
+    boards += [key for key in fetched_by if key not in boards]
+
+    print(f"\n{'ats':<12}{'company':<24}{'fetched':>9}{'passed':>8}")
+    print("-" * 53)
+    for ats, company in boards:
+        fetched = fetched_by.get((ats, company), 0)
+        passed = passed_by.get((ats, company), 0)
+        flag = "   <- nothing fetched" if fetched == 0 else ""
+        print(f"{ats:<12}{company:<24}{fetched:>9}{passed:>8}{flag}")
+    print("-" * 53)
+    print(f"{'total':<36}{len(rows):>9}{len(passing):>8}")
+
+
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(description="Fetch, filter, and emit senior PM roles.")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="fetch and filter, print per-company counts, and write nothing",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
     tokens = load_json(TOKENS_PATH)
@@ -93,10 +160,22 @@ def main():
     rows = fetch_ats.fetch_all(tokens)
     passing = apply_filters(rows, filters)
     seen = load_seen()
-    new = dedup(passing, seen)
+    new = dedup(passing, set(seen))
+
+    if args.dry_run:
+        print_report(tokens, rows, passing)
+        print(f"\n{len(new)} of {len(passing)} would be new. Dry run — nothing written.")
+        return
 
     write_candidates(new)
-    write_json(SEEN_PATH, {"urls": sorted(seen | {row["url"] for row in new})})
+
+    stamp = _now()
+    seen.update({row["url"]: stamp for row in new})
+    kept = prune_seen(seen)
+    dropped = len(seen) - len(kept)
+    if dropped:
+        log.info("pruned %d urls first seen over %d days ago", dropped, SEEN_TTL_DAYS)
+    write_json(SEEN_PATH, {"urls": dict(sorted(kept.items()))})
 
     log.info("fetched %d, passed filters %d, new %d", len(rows), len(passing), len(new))
     for row in new:
