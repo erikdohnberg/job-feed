@@ -24,6 +24,19 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      # Without this the run would go green while silently skipping the Notion push,
+      # and the roles would still be marked seen.
+      - name: Check the Notion secret reached the job
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+        run: |
+          if [ -z "$NOTION_TOKEN" ]; then
+            echo "::error::NOTION_TOKEN is empty. Check it is a repository secret under"
+            echo "::error::Settings > Secrets and variables > Actions, spelled exactly NOTION_TOKEN."
+            exit 1
+          fi
+          echo "NOTION_TOKEN is present (${#NOTION_TOKEN} chars)."
+
       - name: Fetch, filter, write the feed, and push to Notion
         run: python src/run.py
         env:
