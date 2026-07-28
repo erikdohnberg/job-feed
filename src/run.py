@@ -27,6 +27,10 @@ OUTPUT_PATH = ROOT / "candidates.json"
 # Urls first seen longer ago than this are dropped from state/seen.json to keep it small.
 SEEN_TTL_DAYS = 60
 
+# Some companies open one req per region for the same job (Instacart posts a US and a
+# Canada copy). When that happens, keep the posting whose location matches one of these.
+PREFERRED_LOCATIONS = ("canada", "toronto", "ontario")
+
 
 def load_json(path, default=None):
     """Read a JSON file, returning `default` if it is missing or unreadable."""
@@ -103,6 +107,38 @@ def write_candidates(roles):
     write_json(OUTPUT_PATH, {"generated_at": _now(), "count": len(roles), "roles": roles})
 
 
+def _role_key(row):
+    """Same company, same title = the same job, however many regional copies exist."""
+    return row.get("company", ""), " ".join((row.get("title") or "").lower().split())
+
+
+def _location_rank(row):
+    """Sort key: preferred-region postings first, then url so the choice is stable."""
+    location = (row.get("location") or "").lower()
+    preferred = any(term in location for term in PREFERRED_LOCATIONS)
+    return (0 if preferred else 1, row.get("url") or "")
+
+
+def collapse_regional_duplicates(rows):
+    """Keep one row per (company, title), preferring a PREFERRED_LOCATIONS posting."""
+    grouped = {}
+    for row in rows:
+        grouped.setdefault(_role_key(row), []).append(row)
+
+    kept = []
+    for group in grouped.values():
+        group.sort(key=_location_rank)
+        for dropped in group[1:]:
+            log.info(
+                "  collapsed regional copy: [%s] %s — %s",
+                dropped["company"],
+                dropped["title"],
+                dropped["location"] or "n/a",
+            )
+        kept.append(group[0])
+    return kept
+
+
 def dedup(rows, seen_urls):
     """Drop rows whose url is already in seen_urls, and any repeats within this run."""
     new = []
@@ -159,12 +195,16 @@ def main(argv=None):
 
     rows = fetch_ats.fetch_all(tokens)
     passing = apply_filters(rows, filters)
+    collapsed = collapse_regional_duplicates(passing)
     seen = load_seen()
-    new = dedup(passing, set(seen))
+    new = dedup(collapsed, set(seen))
 
     if args.dry_run:
         print_report(tokens, rows, passing)
-        print(f"\n{len(new)} of {len(passing)} would be new. Dry run — nothing written.")
+        print(
+            f"\n{len(passing)} passed, {len(collapsed)} after collapsing regional copies, "
+            f"{len(new)} would be new. Dry run — nothing written."
+        )
         return
 
     write_candidates(new)
@@ -177,7 +217,13 @@ def main(argv=None):
         log.info("pruned %d urls first seen over %d days ago", dropped, SEEN_TTL_DAYS)
     write_json(SEEN_PATH, {"urls": dict(sorted(kept.items()))})
 
-    log.info("fetched %d, passed filters %d, new %d", len(rows), len(passing), len(new))
+    log.info(
+        "fetched %d, passed filters %d, after collapsing regional copies %d, new %d",
+        len(rows),
+        len(passing),
+        len(collapsed),
+        len(new),
+    )
     for row in new:
         log.info("  + [%s] %s — %s", row["company"], row["title"], row["location"] or "n/a")
 

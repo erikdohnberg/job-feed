@@ -107,6 +107,22 @@ total                                     175      17
 `<- nothing fetched` means a dead or misspelled slug. A company whose `passed` count
 looks implausibly high is a sign the filters need tightening.
 
+## Regional duplicates
+
+Some companies open one requisition per region for the same job — Instacart posts a US
+copy and a Canada copy, each with its own URL, so URL-keyed dedup cannot tell they are
+the same role. Each run therefore keeps one row per `(company, title)`, preferring the
+posting whose location matches `PREFERRED_LOCATIONS` in `src/run.py` (`canada`,
+`toronto`, `ontario`); ties break on URL so the choice is stable between runs. Dropped
+copies are logged:
+
+```
+collapsed regional copy: [instacart] Senior Product Manager, Ads Quality — United States - Remote
+```
+
+A role posted in only one region is never affected. The dropped copy's URL is not added
+to the seen set, so if the preferred posting later closes, the remaining one is emitted.
+
 ## Dedup state
 
 `state/seen.json` maps every emitted url to the date it was first seen:
