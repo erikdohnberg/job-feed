@@ -24,8 +24,10 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Fetch, filter, and write the feed
+      - name: Fetch, filter, write the feed, and push to Notion
         run: python src/run.py
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
 
       - name: Commit the feed if it changed
         run: |

@@ -119,6 +119,38 @@ total                                     175      17
 `<- nothing fetched` means a dead or misspelled slug. A company whose `passed` count
 looks implausibly high is a sign the filters need tightening.
 
+## Notion push
+
+Every new role is also created as a row in the Notion **Pipeline** database. `candidates.json`
+remains the debug/audit artifact; the Pipeline rows are the working copy.
+
+Auth is a Notion internal integration token in `NOTION_TOKEN`, supplied to the Action from
+the repository secret of the same name. With no token set the push is skipped and the rest
+of the run proceeds, so local runs need no credentials.
+
+`src/notion_push.py` reads the data source schema once per run and maps onto whatever
+property names and types Notion reports, so a renamed property is skipped with a warning
+rather than failing the row. The mapping:
+
+| Pipeline property | Value |
+| --- | --- |
+| Role Title (title) | role title |
+| Company (text) | board token |
+| JD Link (url) | posting url |
+| Source (select) | `job-feed` |
+| Submission Status (select) | `Pending` |
+| Stage (select) | `Watching` |
+
+Fit Score, Bucket and Network Score are left empty for the scorer to fill.
+
+The JD goes into the **page body** as paragraph blocks chunked to 1900 characters, since a
+Notion property caps out at 2000. Chunks reassemble to the original exactly, and a
+description longer than 100 blocks is appended in follow-up calls rather than truncated.
+
+Failures never break the run: a non-2xx logs a warning and moves on, and a role that did
+not reach Notion is deliberately **not** recorded in `state/seen.json`, so the next run
+retries it instead of dropping it.
+
 ## Regional duplicates
 
 Some companies open one requisition per region for the same job — Instacart posts a US

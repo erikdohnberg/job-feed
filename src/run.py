@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import fetch_ats
+import notion_push
 from filter import apply_filters
 
 log = logging.getLogger("run")
@@ -239,8 +240,21 @@ def main(argv=None):
         )
         return
 
+    # Push before recording anything as seen: a role that does not reach Notion stays
+    # unseen, so the next run retries it rather than dropping it silently.
+    pushed = notion_push.push_roles(new)
+    if pushed is None:
+        recorded = new
+    else:
+        recorded = [row for row in new if row["url"] in pushed]
+        if len(recorded) < len(new):
+            log.warning(
+                "%d role(s) did not reach Notion, leaving them unseen for the next run",
+                len(new) - len(recorded),
+            )
+
     stamp = _now()
-    seen.update({row["url"]: stamp for row in new})
+    seen.update({row["url"]: stamp for row in recorded})
 
     window = roles_in_window(collapsed, seen)
     write_candidates(window)
