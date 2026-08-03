@@ -33,7 +33,12 @@ SEEN_TTL_DAYS = 60
 
 # Some companies open one req per region for the same job (Instacart posts a US and a
 # Canada copy). When that happens, keep the posting whose location matches one of these.
-PREFERRED_LOCATIONS = ("canada", "toronto", "ontario")
+# Keep this in step with the Canadian entries in filters.json locations_allow: a copy in
+# a Canadian city has to outrank a US one, or the tie breaks on url and picks arbitrarily.
+PREFERRED_LOCATIONS = (
+    "canada", "toronto", "ontario", "vancouver", "british columbia", "montreal",
+    "quebec", "calgary", "alberta", "ottawa", "halifax", "nova scotia",
+)
 
 
 def load_json(path, default=None):
