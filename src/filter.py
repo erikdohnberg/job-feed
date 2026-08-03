@@ -53,14 +53,19 @@ def has_negative_keyword(title, filters):
 
 
 def keep(row, filters):
-    """True if the row survives every rule above."""
+    """True if the row survives every rule above.
+
+    The level rule is optional. Companies like Cohere post senior work under a plain
+    "Product Manager" title, so requiring a level term drops roles worth seeing. With
+    require_level false the hard exclusions still block associate/junior/intern/apm,
+    and anything under-levelled that slips through is caught by the scorer's HF5.
+    """
     title = row.get("title") or ""
-    return (
-        is_pm_role(title, filters)
-        and is_senior_level(title, filters)
-        and location_allowed(row, filters)
-        and not has_negative_keyword(title, filters)
-    )
+    if not is_pm_role(title, filters):
+        return False
+    if filters.get("require_level", True) and not is_senior_level(title, filters):
+        return False
+    return location_allowed(row, filters) and not has_negative_keyword(title, filters)
 
 
 def apply_filters(rows, filters):

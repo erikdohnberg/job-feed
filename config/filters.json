@@ -1,9 +1,13 @@
 {
+  "require_level": false,
   "pm_terms": [
     "product manager",
     "product management",
     "product lead",
-    "product owner"
+    "product owner",
+    "director of product",
+    "head of product",
+    "product director"
   ],
   "levels": [
     "senior",
@@ -12,7 +16,9 @@
     "lead",
     "principal",
     "staff",
-    "group"
+    "group",
+    "director",
+    "head of"
   ],
   "negative_keywords": [
     "control brand",
@@ -21,8 +27,17 @@
   ],
   "locations_allow": [
     "remote",
+    "canada",
     "toronto",
     "ontario",
-    "canada"
+    "vancouver",
+    "british columbia",
+    "montreal",
+    "quebec",
+    "calgary",
+    "alberta",
+    "ottawa",
+    "halifax",
+    "nova scotia"
   ]
 }
