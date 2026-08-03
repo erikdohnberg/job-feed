@@ -3,7 +3,8 @@
 Reports only. This never touches config/tokens.json — copy the confident matches in
 by hand.
 
-    python src/resolve_ats.py
+    python src/resolve_ats.py                       # every company in COMPANIES
+    python src/resolve_ats.py "Alexi" "Q4" "League"  # just the names given
 
 Writes ats_resolution.csv and prints the table, a ready-to-paste tokens block of the
 MATCH-confidence slugs, and a list of companies that need a manual look.
@@ -13,6 +14,7 @@ import csv
 import json
 import logging
 import re
+import sys
 import time
 from pathlib import Path
 
@@ -28,6 +30,17 @@ COMPANIES = [
     "Cohere", "Shopify", "Overstory", "Instacart", "Dropbox", "Vena Solutions", "Tali AI",
     "Prenuvo", "ecobee", "Workday",
 ]
+
+# Hand-supplied slugs, tried before the generated candidates. Use these when a company's
+# board slug cannot be derived from its name (legal-entity names, "inc" suffixes, rebrands).
+SLUG_OVERRIDES = {
+    "Alexi": ["alexsei"],
+    "Q4": ["q4inc", "q4-inc"],
+    "Wisedocs": ["wisedocsai", "wisedocs-inc"],
+    "League": ["leagueinc", "getleague", "league-inc"],
+    "Dialogue": ["dialoguetech", "dialoguehealth", "dialogue-health"],
+    "BrainBox AI": ["brainboxai", "brainbox-ai", "brainbox-technologies"],
+}
 
 GREENHOUSE_BOARD = "https://boards-api.greenhouse.io/v1/boards/{slug}"
 GREENHOUSE_JOBS = "https://boards-api.greenhouse.io/v1/boards/{slug}/jobs"
@@ -70,8 +83,9 @@ def candidate_slugs(name):
         "-".join(re.split(r"[^A-Za-z0-9]+", name.strip())),
     ]
 
+    # Hand-supplied slugs go first, in the order given.
     ordered = []
-    for candidate in candidates:
+    for candidate in SLUG_OVERRIDES.get(name, []) + candidates:
         if candidate and candidate not in ordered:
             ordered.append(candidate)
     return ordered
@@ -250,8 +264,11 @@ def print_manual_list(rows):
         if row["confidence"] == "NONE":
             flagged.setdefault(row["company"], []).append("no board found on any ATS")
         elif row["confidence"] == "MISMATCH":
+            # Call out overrides: the slug came from SLUG_OVERRIDES, so it resolving is
+            # worth more than the confidence rule alone can express.
+            source = "override slug" if row["slug"] in SLUG_OVERRIDES.get(row["company"], []) else "unconfirmed"
             flagged.setdefault(row["company"], []).append(
-                f"{row['ats']}/{row['slug']} — unconfirmed: {row['board_name_or_sample'][:60]}"
+                f"{row['ats']}/{row['slug']} — {source}: {row['board_name_or_sample'][:60]}"
             )
     print("\n=== needs manual check ===")
     if not flagged:
@@ -262,13 +279,17 @@ def print_manual_list(rows):
             print(f"      {reason}")
 
 
-def main():
+def main(argv=None):
+    """Resolve every company in COMPANIES, or just the names passed on the command line."""
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+    argv = sys.argv[1:] if argv is None else argv
+    targets = argv or COMPANIES
+
     session = requests.Session()
     session.headers.update({"User-Agent": USER_AGENT, "Accept": "application/json"})
 
     rows = []
-    for company in COMPANIES:
+    for company in targets:
         log.info("%s", company)
         rows.extend(resolve(company, session))
 
