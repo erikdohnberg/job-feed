@@ -46,9 +46,11 @@ def load_json(path, default=None):
             raise
         log.warning("%s not found, using default", path.name)
         return default
-    except ValueError:
+    except ValueError as exc:
         if default is None:
-            raise
+            # tokens.json and filters.json are hand-edited, so a stray comma is the
+            # likeliest failure. Say where it is instead of dumping a json traceback.
+            raise SystemExit(f"ERROR: {path} is not valid JSON — {exc}") from None
         log.warning("%s is not valid JSON, using default", path.name)
         return default
 
