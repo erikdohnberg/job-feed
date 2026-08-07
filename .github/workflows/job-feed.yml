@@ -2,7 +2,7 @@ name: job-feed
 
 on:
   schedule:
-    # 06:00 UTC daily = 02:00 Toronto during EDT, 01:00 during EST.
+    # 05:00 UTC daily = 01:00 Toronto during EDT, 24:00 during EST.
     # GitHub cron is UTC only and does not follow daylight saving.
     - cron: "0 6 * * *"
   workflow_dispatch:
